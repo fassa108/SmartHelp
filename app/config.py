@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     
     # Modèles IA (ajoutés progressivement)
     WHISPER_MODEL: str = "openai/whisper-small"
-    VIT_MODEL: str = "google/vit-base-patch16-224"
+    VLM_MODEL: str = "Qwen/Qwen2-VL-2B-Instruct"
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     
     # Device

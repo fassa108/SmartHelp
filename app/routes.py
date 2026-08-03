@@ -7,10 +7,12 @@ from app.utils.validators import (
     read_file_within_limit
 )
 from app.services.file_service import FileService
-from app.services.audio_service import AudioService 
+from app.services.audio_service import AudioService
+from app.services.vision_service import VisionService
 
 router = APIRouter(tags=["Support Tickets"])
-audio_service = AudioService()  
+audio_service = AudioService()
+vision_service = VisionService()
 
 
 @router.post("/support-ticket", response_model=TicketResponse)
@@ -37,9 +39,7 @@ async def create_support_ticket(
         if image:
             image_bytes = await read_file_within_limit(image)
             validate_image_file(image, image_bytes)
-            # Pour l'instant, on garde le mock
-            image_diagnostic = "Analyse en cours..."
-
+            image_diagnostic = vision_service.analyze(image_bytes) 
         return TicketResponse(
             transcription=transcription,  
             image_diagnostic=image_diagnostic,
