@@ -2,7 +2,6 @@ import os
 import io
 from fastapi import UploadFile, HTTPException
 from PIL import Image
-import librosa
 from app.config import settings
 
 # ============================
