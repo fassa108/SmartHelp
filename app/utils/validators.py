@@ -34,10 +34,9 @@ async def read_file_within_limit(file: UploadFile) -> bytes:
 
 def validate_audio_file(file: UploadFile, contents: bytes) -> None:
     """
-    Valide un fichier audio sur 3 niveaux :
+    Valide un fichier audio sur 2 niveaux :
     1. Extension (.mp3 ou .wav)
     2. Type MIME (audio/mpeg, audio/wav, etc.)
-    3. Contenu réel (via librosa)
     """
     # 1. Vérifier l'extension
     ext = os.path.splitext(file.filename)[1].lower()
@@ -52,17 +51,6 @@ def validate_audio_file(file: UploadFile, contents: bytes) -> None:
         raise HTTPException(
             status_code=415,
             detail="Type MIME audio non supporté ou manquant."
-        )
-
-    # 3. Vérifier le contenu réel avec librosa
-    try:
-        audio_array, sr = librosa.load(io.BytesIO(contents), sr=None, duration=0.1)
-        if len(audio_array) == 0:
-            raise HTTPException(status_code=415, detail="Fichier audio vide")
-    except Exception:
-        raise HTTPException(
-            status_code=415,
-            detail="Le contenu du fichier n'est pas un audio valide."
         )
 
 
