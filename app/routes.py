@@ -6,15 +6,16 @@ from app.utils.validators import (
     validate_image_file,
     read_file_within_limit
 )
-from app.services.file_service import FileService
 from app.services.audio_service import AudioService
 from app.services.vision_service import VisionService
 from app.services.rag_service import RAGService
+from app.services.diagnostic_service import DiagnosticService
 
 router = APIRouter(tags=["Support Tickets"])
 audio_service = AudioService()
 vision_service = VisionService()
 rag_service = RAGService()
+diagnostic_service = DiagnosticService()
 
 
 @router.post("/support-ticket", response_model=TicketResponse)
@@ -32,6 +33,7 @@ async def create_support_ticket(
     image_diagnostic = None
     rag_rule = None
     ticket_status = "À vérifier"
+    confidence = 0.5
 
     try:
         # === TRAITEMENT AUDIO ===
@@ -50,25 +52,23 @@ async def create_support_ticket(
         if transcription or description:
             query_text = description or transcription
             rag_results = rag_service.query(query_text, top_k=3)
-            rag_rule = rag_results[0] if rag_results else "Aucune règle trouvée"
-            
-            # Logique de statut basée sur la règle trouvée
-            if rag_rule:
-                if "Remboursable" in rag_rule:
-                    ticket_status = "Remboursable"
-                elif "À vérifier" in rag_rule or "En attente" in rag_rule:
-                    ticket_status = "À vérifier"
-                elif "Refusé" in rag_rule or "Non remboursable" in rag_rule:
-                    ticket_status = "Refusé"
+            rag_rule = "\n\n---\n".join(rag_results) if rag_results else "Aucune règle trouvée"
         else:
             rag_rule = "Pas de texte à analyser"
+
+        # === DIAGNOSTIC FINAL ===
+        diagnostic = diagnostic_service.diagnostiquer(
+            transcription=transcription,
+            image_diagnostic=image_diagnostic,
+            rag_rule=rag_rule
+        )
 
         return TicketResponse(
             transcription=transcription,
             image_diagnostic=image_diagnostic,
-            rag_rule=rag_rule,
-            ticket_status=ticket_status,
-            confidence=0.85
+            ticket_status=diagnostic["ticket_status"],
+            confidence=diagnostic["confidence"],
+            reasoning=diagnostic["reasoning"]  
         )
 
     except HTTPException:
