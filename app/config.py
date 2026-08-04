@@ -13,10 +13,14 @@ class Settings(BaseSettings):
     # Fichiers
     MAX_FILE_SIZE_MB: int = 50
     
-    # Modèles IA (ajoutés progressivement)
+    # Modèles IA 
     WHISPER_MODEL: str = "openai/whisper-small"
     VLM_MODEL: str = "Qwen/Qwen2-VL-2B-Instruct"
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    
+    # RAG 
+    FAQ_PATH: str = "app/data/faq.txt"
+    TOP_K_RESULTS: int = 3
     
     # Device
     INFERENCE_DEVICE: str = "cpu"
