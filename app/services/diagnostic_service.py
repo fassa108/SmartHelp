@@ -1,72 +1,103 @@
 """
-Service de diagnostic - Logique métier pour déterminer le statut final.
+Service de diagnostic - Utilise un LLM (Groq) pour determiner le statut final.
 """
 
-from app.models.schemas import TicketResponse
+import json
+import re
+from groq import Groq
+from app.config import settings
 
 
 class DiagnosticService:
     _instance = None
+    _client = None
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
+            cls._instance._initialize()
         return cls._instance
 
-    def diagnostiquer(self, transcription: str, image_diagnostic: str, rag_rule: str) -> dict:
-        status = "À vérifier"
-        confidence = 0.5
-        reasoning = []
+    def _initialize(self):
+        if not settings.GROQ_API_KEY:
+            print("ERREUR: GROQ_API_KEY non definie dans .env")
+            self._client = None
+            return
 
-        # === 1. RAG (priorité sur tout) ===
-        if rag_rule and rag_rule != "Pas de texte à analyser":
-            if "Refusé" in rag_rule or "Non remboursable" in rag_rule:
-                status = "Refusé"
-                confidence = 0.7
-                reasoning.append("Règle RAG: refus")
-            elif "Remboursable" in rag_rule:
-                status = "Remboursable"
-                confidence = 0.7
-                reasoning.append("Règle RAG: remboursable")
-            elif "À vérifier" in rag_rule or "En attente" in rag_rule:
-                status = "À vérifier"
-                confidence = 0.5
-                reasoning.append("Règle RAG: à vérifier")
-        
-        # === 2. Image (vérification seulement) ===
-        if image_diagnostic:
-            if "défaut" in image_diagnostic.lower():
-                if status != "Refusé":
-                    status = "Remboursable"
-                    confidence = min(confidence + 0.2, 0.95)
-                    reasoning.append("Défaut détecté sur l'image")
-            elif "conforme" in image_diagnostic.lower():
-                if status == "Remboursable":
-                    status = "À vérifier"
-                    confidence = max(confidence - 0.1, 0.3)
-                    reasoning.append("Produit conforme selon l'image")
-        
-        # === 3. Audio (mots-clés) ===
+        try:
+            self._client = Groq(api_key=settings.GROQ_API_KEY)
+        except Exception as e:
+            print(f"ERREUR: impossible d'initialiser le client Groq : {e}")
+            self._client = None
+
+    def diagnostiquer(self, transcription: str, description_image: str, rag_rule: str) -> dict:
+        if not self._client:
+            return {"ticket_status": "A verifier", "confidence": 0.3, "reasoning": "GROQ_API_KEY non definie"}
+
+        prompt = self._construire_prompt(transcription, description_image, rag_rule)
+
+        try:
+            response = self._client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Tu es un assistant. Retourne UNIQUEMENT un JSON valide avec les champs : "
+                            "status (Remboursable, A verifier, Refuse), "
+                            "confidence (nombre entre 0 et 1), "
+                            "reasoning (explication)."
+                        )
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=200
+            )
+
+            content = response.choices[0].message.content.strip()
+            if not content:
+                raise ValueError("Reponse vide")
+            
+            data = self._parse_response_content(content)
+            
+            return {
+                "ticket_status": data["status"],
+                "confidence": float(data["confidence"]),
+                "reasoning": data["reasoning"]
+            }
+
+        except Exception as e:
+            return self._fallback(str(e))
+
+    def _parse_response_content(self, content: str) -> dict:
+        """Parse la réponse JSON du LLM avec fallback."""
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            if json_match := re.search(r"\{.*\}", content, re.DOTALL):
+                try:
+                    return json.loads(json_match[0])  # ← Changé ici
+                except json.JSONDecodeError:
+                    pass
+            raise ValueError(f"Reponse non JSON: {content[:100]}")
+
+    def _construire_prompt(self, transcription: str, description_image: str, rag_rule: str) -> str:
+        prompt = "Analyse la reclamation client suivante :\n\n"
+
         if transcription:
-            if "cassé" in transcription.lower() or "endommagé" in transcription.lower():
-                if status != "Refusé":
-                    status = "Remboursable"
-                    confidence = min(confidence + 0.1, 0.95)
-                    reasoning.append("Mots-clés audio: cassé/endommagé")
-            elif "fait tomber" in transcription.lower() or "chute" in transcription.lower():
-                if status == "Remboursable":
-                    status = "À vérifier"
-                    reasoning.append("Mots-clés audio: chute/mauvaise manipulation")
-            elif "conforme" in transcription.lower():
-                if status != "Refusé":
-                    status = "À vérifier"
-                    reasoning.append("Mots-clés audio: conforme")
+            prompt += f"Message vocal : {transcription}\n\n"
+        if description_image:
+            prompt += f"Description de l'image : {description_image}\n\n"
+        if rag_rule and rag_rule not in ("Pas de texte a analyser", "Aucune regle trouvee"):
+            prompt += f"Regle interne : {rag_rule}\n\n"
 
-        # === 4. Confiance finale ===
-        confidence = round(min(confidence, 0.95), 2)
+        prompt += "Retourne le diagnostic sous forme de JSON."
+        return prompt
 
+    def _fallback(self, error: str) -> dict:
         return {
-            "ticket_status": status,
-            "confidence": confidence,
-            "reasoning": " | ".join(reasoning) if reasoning else "Diagnostic par défaut"
+            "ticket_status": "A verifier",
+            "confidence": 0.3,
+            "reasoning": f"Erreur: {error}"
         }

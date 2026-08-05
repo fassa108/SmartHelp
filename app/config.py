@@ -2,8 +2,10 @@
 Configuration centralisée — toutes les variables d'environnement du projet.
 """
 
+import os
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
-
+load_dotenv()
 class Settings(BaseSettings):
     # Serveur
     APP_NAME: str = "Support Ticket Assistant"
@@ -17,6 +19,7 @@ class Settings(BaseSettings):
     WHISPER_MODEL: str = "openai/whisper-small"
     VLM_MODEL: str = "Qwen/Qwen2-VL-2B-Instruct"
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     
     # RAG 
     FAQ_PATH: str = "app/data/faq.txt"

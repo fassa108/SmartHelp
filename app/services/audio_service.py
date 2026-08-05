@@ -36,7 +36,8 @@ class AudioService:
         
         try:
             # Transcrire
-            result = self._pipe(audio_path, generate_kwargs={"language": "fr"}, return_timestamps = True)
+            result = self._pipe(audio_path,
+            return_timestamps = True)
             return result["text"]
         finally:
             # Nettoyer
