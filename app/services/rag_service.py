@@ -1,17 +1,18 @@
-import pickle
-import re
+"""
+Service RAG avec ChromaDB
+Recherche documentaire dans la FAQ interne.
+"""
+
 import os
-import numpy as np
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
+from langchain_chroma import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from app.config import settings
 
 
 class RAGService:
     _instance = None
-    _model = None
-    _chunks = []
-    _embeddings = None
+    _retriever = None
+    _vector_store = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -20,59 +21,61 @@ class RAGService:
         return cls._instance
 
     def _initialize(self):
-        """Charge ou crée les embeddings avec chunks longs (sections entières)."""
-        cache_path = "app/data/embeddings.pkl"
-        self._model = SentenceTransformer(settings.EMBEDDING_MODEL)
+        """Initialise ChromaDB avec la FAQ."""
+        persist_dir = "app/data/chroma_db"
         
-        # 1. Charger depuis le cache si existant
-        if os.path.exists(cache_path):
-            with open(cache_path, "rb") as f:
-                data = pickle.load(f)
-                self._chunks = data["chunks"]
-                self._embeddings = data["embeddings"]
-            print(f"RAG: {len(self._chunks)} chunks chargés du cache")
-            return
+        embeddings = HuggingFaceEmbeddings(
+            model_name=settings.EMBEDDING_MODEL
+        )
         
-        # 2. Lire le fichier FAQ
+        if os.path.exists(persist_dir) and os.listdir(persist_dir):
+            self._vector_store = Chroma(
+                persist_directory=persist_dir,
+                embedding_function=embeddings
+            )
+        else:
+            self._create_chromadb(embeddings, persist_dir)
+        
+        self._retriever = self._vector_store.as_retriever(
+            search_kwargs={"k": settings.TOP_K_RESULTS}
+        )
+
+    def _create_chromadb(self, embeddings, persist_dir):
+        """Cree et indexe ChromaDB a partir du fichier FAQ."""
         with open(settings.FAQ_PATH, "r", encoding="utf-8") as f:
             content = f.read()
         
-        # 3. Découpage par SECTION (chunks longs)
-        # Capture tout depuis "--- SECTION X :" jusqu'à la prochaine section ou la fin
-        section_pattern = r"---\s*SECTION \d+ : .*?(?=---\s*SECTION \d+ : |\Z)"
-        self._chunks = re.findall(section_pattern, content, re.DOTALL)
+        chunks = self._extract_sections(content)
         
-        # 4. Fallback : si pas de sections, découpage par règle
-        if not self._chunks or len(self._chunks) < 2:
-            rule_pattern = r"- REGLE \d+\.\d+ .*?(?=\n- REGLE \d+\.\d+|\Z)"
-            self._chunks = re.findall(rule_pattern, content, re.DOTALL)
-        
-        # 5. Fallback final : découpage par ligne
-        if not self._chunks:
-            self._chunks = [line.strip() for line in content.split('\n') if line.strip() and line.startswith('-')]
-        
-        # 6. Vectorisation
-        self._embeddings = self._model.encode(self._chunks)
-        
-        # 7. Sauvegarde du cache
-        with open(cache_path, "wb") as f:
-            pickle.dump({"chunks": self._chunks, "embeddings": self._embeddings}, f)
-        
-        print(f"RAG: {len(self._chunks)} chunks indexés et sauvegardés")
+        self._vector_store = Chroma.from_texts(
+            texts=chunks,
+            embedding=embeddings,
+            persist_directory=persist_dir
+        )
 
-    def query(self, question: str, top_k: int = 5) -> list:
-        """
-        Recherche les chunks les plus pertinents.
-        Retourne une liste de chunks (texte).
-        """
-        # 1. Embedding de la question
-        q_embedding = self._model.encode([question])
+    def _extract_sections(self, content: str) -> list:
+        """Extrait les règles du fichier."""
+        chunks = []
+        current_rule = ""
         
-        # 2. Calcul de la similarité cosinus
-        similarities = cosine_similarity(q_embedding, self._embeddings)[0]
+        for line in content.split('\n'):
+            if line.strip().startswith('- Règle'):
+                if current_rule:
+                    chunks.append(current_rule)
+                current_rule = line + "\n"
+            else:
+                current_rule += line + "\n"
         
-        # 3. Récupération des indices des meilleurs scores
-        top_indices = np.argsort(similarities)[-top_k:][::-1]
+        if current_rule:
+            chunks.append(current_rule)
         
-        # 4. Retour des chunks correspondants
-        return [self._chunks[i] for i in top_indices]
+        return chunks or [content]
+
+    def query(self, question: str, top_k: int = None) -> list:
+        """Recherche les chunks les plus pertinents via ChromaDB."""
+        if top_k is None:
+            top_k = settings.TOP_K_RESULTS
+        
+        self._retriever.search_kwargs["k"] = top_k
+        docs = self._retriever.invoke(question)
+        return [doc.page_content for doc in docs]

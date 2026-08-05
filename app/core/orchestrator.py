@@ -44,7 +44,6 @@ class Orchestrator:
         """
         Exécute le pipeline complet.
         """
-        # Initialisation
         transcription = None
         image_diagnostic = None
         rag_rule = None
@@ -59,7 +58,7 @@ class Orchestrator:
         if image:
             image_bytes = await read_file_within_limit(image)
             validate_image_file(image, image_bytes)
-            image_diagnostic = self._vision_service.analyze(image_bytes)
+            image_diagnostic = self._vision_service.analyser(image_bytes)
 
         # === 3. RAG ===
         if transcription or description:
@@ -72,7 +71,7 @@ class Orchestrator:
         # === 4. DIAGNOSTIC FINAL ===
         diagnostic = self._diagnostic_service.diagnostiquer(
             transcription=transcription,
-            image_diagnostic=image_diagnostic,
+            description_image=image_diagnostic,  # ← Changé : description_image
             rag_rule=rag_rule
         )
 
