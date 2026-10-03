@@ -23,13 +23,13 @@ class Settings(BaseSettings):
     
     # RAG 
     FAQ_PATH: str = "app/data/faq.txt"
-    TOP_K_RESULTS: int = 3
+    TOP_K_RESULTS: int = 1
     
     # Device
     INFERENCE_DEVICE: str = "cpu"
     
     # Types MIME autorisés
-    ALLOWED_AUDIO_TYPES: set = {"audio/mpeg", "audio/wav", "audio/wave", "audio/x-wav"}
+    ALLOWED_AUDIO_TYPES: set = {"audio/mpeg", "audio/wav", "audio/wave", "audio/webm", "audio/x-wav"}
     ALLOWED_IMAGE_TYPES: set = {"image/png", "image/jpeg", "image/jpg", "image/bmp", "image/webp"}
     
     @property

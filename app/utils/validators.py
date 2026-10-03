@@ -8,10 +8,10 @@ from app.config import settings
 # CONSTANTES
 # ============================
 
-ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav"}
+ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".webm", ".wav"}
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 
-ALLOWED_AUDIO_MIME = {"audio/mpeg", "audio/wav", "audio/wave", "audio/x-wav"}
+ALLOWED_AUDIO_MIME = {"audio/mpeg", "audio/wav", "audio/wave", "audio/webm", "audio/x-wav"}
 ALLOWED_IMAGE_MIME = {"image/png", "image/jpeg", "image/jpg", "image/bmp", "image/webp"}
 
 
